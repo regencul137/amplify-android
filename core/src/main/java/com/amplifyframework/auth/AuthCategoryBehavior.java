@@ -17,6 +17,7 @@ package com.amplifyframework.auth;
 
 import android.app.Activity;
 import android.content.Intent;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -37,6 +38,7 @@ import com.amplifyframework.auth.result.AuthResetPasswordResult;
 import com.amplifyframework.auth.result.AuthSignInResult;
 import com.amplifyframework.auth.result.AuthSignOutResult;
 import com.amplifyframework.auth.result.AuthSignUpResult;
+import com.amplifyframework.auth.result.AuthSoftwareMFAResult;
 import com.amplifyframework.auth.result.AuthUpdateAttributeResult;
 import com.amplifyframework.core.Action;
 import com.amplifyframework.core.Consumer;
@@ -510,6 +512,40 @@ public interface AuthCategoryBehavior {
      * @param onError Error callback
      */
     void deleteUser(
+            @NonNull Action onSuccess,
+            @NonNull Consumer<AuthException> onError);
+
+    /**
+     * Associate software MFA token for the currently signed in user.
+     * @param onSuccess Success callback
+     * @param onError Error callback
+     */
+    void associateSoftwareMFAToken(
+            @NonNull Consumer<AuthSoftwareMFAResult> onSuccess,
+            @NonNull Consumer<AuthException> onError);
+
+    /**
+     * Verify software MFA token using a code from the user
+     * @param userCode Code from the user
+     * @param friendlyDeviceName name from the user
+     * @param onSuccess Success callback
+     * @param onError Error callback
+     */
+    void verifySoftwareMFAToken(
+            @NonNull String userCode,
+            @NonNull String friendlyDeviceName,
+            @NonNull Action onSuccess,
+            @NonNull Consumer<AuthException> onError
+    );
+
+    /**
+     *
+     * @param enabled Software MFA state
+     * @param onSuccess Success callback
+     * @param onError Error callback
+     */
+    void setSoftwareMFA(
+            @NonNull boolean enabled,
             @NonNull Action onSuccess,
             @NonNull Consumer<AuthException> onError);
 }

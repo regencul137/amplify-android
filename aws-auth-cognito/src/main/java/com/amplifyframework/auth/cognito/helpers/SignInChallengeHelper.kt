@@ -112,6 +112,12 @@ internal object SignInChallengeHelper {
                 )
                 onSuccess.accept(authSignInResult)
             }
+            is ChallengeNameType.SoftwareTokenMfa -> {
+                val authSignInResult = AuthSignInResult(
+                    false,
+                    AuthNextSignInStep(AuthSignInStep.CONFIRM_SIGN_IN_WITH_SOFTWARE_MFA_TOKEN, mapOf(), null))
+                onSuccess.accept(authSignInResult)
+            }
             is ChallengeNameType.NewPasswordRequired -> {
                 val authSignInResult = AuthSignInResult(
                     false,
@@ -126,7 +132,7 @@ internal object SignInChallengeHelper {
                 )
                 onSuccess.accept(authSignInResult)
             }
-            else -> onError.accept(UnknownException(cause = Exception("Challenge type not supported.")))
+            else -> onError.accept(UnknownException(cause = Exception("Challenge type not supported: ${challenge.challengeName}")))
         }
     }
 }

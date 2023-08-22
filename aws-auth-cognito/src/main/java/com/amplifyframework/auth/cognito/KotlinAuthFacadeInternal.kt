@@ -43,6 +43,7 @@ import com.amplifyframework.auth.result.AuthResetPasswordResult
 import com.amplifyframework.auth.result.AuthSignInResult
 import com.amplifyframework.auth.result.AuthSignOutResult
 import com.amplifyframework.auth.result.AuthSignUpResult
+import com.amplifyframework.auth.result.AuthSoftwareMFAResult
 import com.amplifyframework.auth.result.AuthUpdateAttributeResult
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -490,6 +491,36 @@ internal class KotlinAuthFacadeInternal(private val delegate: RealAWSCognitoAuth
     suspend fun deleteUser() {
         return suspendCoroutine { continuation ->
             delegate.deleteUser(
+                { continuation.resume(Unit) },
+                { continuation.resumeWithException(it) }
+            )
+        }
+    }
+
+    suspend fun associateSoftwareMFAToken(): AuthSoftwareMFAResult {
+        return suspendCoroutine { continuation ->
+            delegate.associateSoftwareMFAToken(
+                { continuation.resume(it) },
+                { continuation.resumeWithException(it) }
+            )
+        }
+    }
+
+    suspend fun verifySoftwareMFAToken(userCode: String, friendlyDeviceName: String) {
+        return suspendCoroutine { continuation ->
+            delegate.verifySoftwareMFAToken(
+                userCode,
+                friendlyDeviceName,
+                { continuation.resume(Unit) },
+                { continuation.resumeWithException(it) }
+            )
+        }
+    }
+
+    suspend fun setSoftwareMFA(enabled: Boolean) {
+        return suspendCoroutine { continuation ->
+            delegate.setSoftwareMFA(
+                enabled,
                 { continuation.resume(Unit) },
                 { continuation.resumeWithException(it) }
             )

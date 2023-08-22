@@ -15,6 +15,7 @@
 
 package com.amplifyframework.auth.cognito.actions
 
+import android.util.Log
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.ChallengeNameType
 import aws.sdk.kotlin.services.cognitoidentityprovider.respondToAuthChallenge
 import com.amplifyframework.auth.cognito.AuthEnvironment
@@ -24,25 +25,32 @@ import com.amplifyframework.auth.exceptions.UnknownException
 import com.amplifyframework.statemachine.Action
 import com.amplifyframework.statemachine.codegen.actions.SignInChallengeActions
 import com.amplifyframework.statemachine.codegen.data.AuthChallenge
+import com.amplifyframework.statemachine.codegen.data.DeviceMetadata
 import com.amplifyframework.statemachine.codegen.events.CustomSignInEvent
 import com.amplifyframework.statemachine.codegen.events.SignInChallengeEvent
 
 internal object SignInChallengeCognitoActions : SignInChallengeActions {
     private const val KEY_SECRET_HASH = "SECRET_HASH"
     private const val KEY_USERNAME = "USERNAME"
+    private const val KEY_DEVICE_KEY = "DEVICE_KEY"
+
     override fun verifyChallengeAuthAction(
         event: SignInChallengeEvent.EventType.VerifyChallengeAnswer,
         challenge: AuthChallenge
     ): Action = Action<AuthEnvironment>("VerifySignInChallenge") { id, dispatcher ->
         logger.verbose("$id Starting execution")
+
         val evt = try {
-            val username = challenge.username
+            val username = challenge.parameters?.get("USER_ID_FOR_SRP")
             val challengeResponses = mutableMapOf<String, String>()
 
             if (!username.isNullOrEmpty()) {
                 challengeResponses[KEY_USERNAME] = username
+                val deviceMetadata: DeviceMetadata.Metadata? = getDeviceMetadata(username)
+                deviceMetadata?.let {
+                    challengeResponses[KEY_DEVICE_KEY] = it.deviceKey
+                }
             }
-
             getChallengeResponseKey(challenge.challengeName)?.also { responseKey ->
                 challengeResponses[responseKey] = event.answer
             }
@@ -91,6 +99,7 @@ internal object SignInChallengeCognitoActions : SignInChallengeActions {
             is ChallengeNameType.SmsMfa -> "SMS_MFA_CODE"
             is ChallengeNameType.NewPasswordRequired -> "NEW_PASSWORD"
             is ChallengeNameType.CustomChallenge -> "ANSWER"
+            is ChallengeNameType.SoftwareTokenMfa -> "SOFTWARE_TOKEN_MFA_CODE"
             else -> null
         }
     }

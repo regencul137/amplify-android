@@ -53,6 +53,7 @@ import com.amplifyframework.auth.result.AuthResetPasswordResult
 import com.amplifyframework.auth.result.AuthSignInResult
 import com.amplifyframework.auth.result.AuthSignOutResult
 import com.amplifyframework.auth.result.AuthSignUpResult
+import com.amplifyframework.auth.result.AuthSoftwareMFAResult
 import com.amplifyframework.auth.result.AuthUpdateAttributeResult
 import com.amplifyframework.core.Action
 import com.amplifyframework.core.Amplify
@@ -766,6 +767,49 @@ class AWSCognitoAuthPlugin : AuthPlugin<AWSCognitoAuthService>() {
                 }
             }
         )
+    }
+
+    override fun associateSoftwareMFAToken(onSuccess: Consumer<AuthSoftwareMFAResult>,
+                                           onError: Consumer<AuthException>) {
+        queueChannel.trySend(
+            pluginScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    val result = queueFacade.associateSoftwareMFAToken()
+                    onSuccess.accept(result)
+                } catch (e: Exception) {
+                    onError.accept(e.toAuthException())
+                }
+            }
+                            )
+    }
+
+    override fun verifySoftwareMFAToken(userCode: String,
+                                        friendlyDeviceName: String,
+                                        onSuccess: Action,
+                                        onError: Consumer<AuthException>) {
+        queueChannel.trySend(
+            pluginScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    queueFacade.verifySoftwareMFAToken(userCode, friendlyDeviceName)
+                    onSuccess.call()
+                } catch (e: Exception) {
+                    onError.accept(e.toAuthException())
+                }
+            }
+                            )
+    }
+
+    override fun setSoftwareMFA(enabled: Boolean, onSuccess: Action, onError: Consumer<AuthException>) {
+        queueChannel.trySend(
+            pluginScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    queueFacade.setSoftwareMFA(enabled)
+                    onSuccess.call()
+                } catch (e: Exception) {
+                    onError.accept(e.toAuthException())
+                }
+            }
+                            )
     }
 
     override fun getEscapeHatch() = realPlugin.escapeHatch()

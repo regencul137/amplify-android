@@ -18,6 +18,7 @@ package com.amplifyframework.auth.cognito
 import android.app.Activity
 import android.content.Intent
 import androidx.annotation.WorkerThread
+import aws.sdk.kotlin.services.cognitoidentityprovider.associateSoftwareToken
 import aws.sdk.kotlin.services.cognitoidentityprovider.confirmForgotPassword
 import aws.sdk.kotlin.services.cognitoidentityprovider.confirmSignUp
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.AnalyticsMetadataType
@@ -27,12 +28,16 @@ import aws.sdk.kotlin.services.cognitoidentityprovider.model.DeviceRememberedSta
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.GetUserAttributeVerificationCodeRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.GetUserRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.ListDevicesRequest
+import aws.sdk.kotlin.services.cognitoidentityprovider.model.SoftwareTokenMfaSettingsType
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.UpdateDeviceStatusRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.UpdateUserAttributesRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.UpdateUserAttributesResponse
+import aws.sdk.kotlin.services.cognitoidentityprovider.model.VerifySoftwareTokenResponseType
 import aws.sdk.kotlin.services.cognitoidentityprovider.model.VerifyUserAttributeRequest
 import aws.sdk.kotlin.services.cognitoidentityprovider.resendConfirmationCode
+import aws.sdk.kotlin.services.cognitoidentityprovider.setUserMfaPreference
 import aws.sdk.kotlin.services.cognitoidentityprovider.signUp
+import aws.sdk.kotlin.services.cognitoidentityprovider.verifySoftwareToken
 import com.amplifyframework.AmplifyException
 import com.amplifyframework.annotations.InternalAmplifyApi
 import com.amplifyframework.auth.AWSCognitoAuthMetadataType
@@ -103,12 +108,15 @@ import com.amplifyframework.auth.result.AuthResetPasswordResult
 import com.amplifyframework.auth.result.AuthSignInResult
 import com.amplifyframework.auth.result.AuthSignOutResult
 import com.amplifyframework.auth.result.AuthSignUpResult
+import com.amplifyframework.auth.result.AuthSoftwareMFAResult
 import com.amplifyframework.auth.result.AuthUpdateAttributeResult
 import com.amplifyframework.auth.result.step.AuthNextSignInStep
 import com.amplifyframework.auth.result.step.AuthNextSignUpStep
+import com.amplifyframework.auth.result.step.AuthNextSoftwareMFAStep
 import com.amplifyframework.auth.result.step.AuthNextUpdateAttributeStep
 import com.amplifyframework.auth.result.step.AuthSignInStep
 import com.amplifyframework.auth.result.step.AuthSignUpStep
+import com.amplifyframework.auth.result.step.AuthSoftwareMFAStep
 import com.amplifyframework.auth.result.step.AuthUpdateAttributeStep
 import com.amplifyframework.core.Action
 import com.amplifyframework.core.Amplify
@@ -142,6 +150,7 @@ import com.amplifyframework.statemachine.codegen.states.SRPSignInState
 import com.amplifyframework.statemachine.codegen.states.SignInChallengeState
 import com.amplifyframework.statemachine.codegen.states.SignInState
 import com.amplifyframework.statemachine.codegen.states.SignOutState
+import kotlinx.coroutines.CoroutineScope
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -149,6 +158,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -1825,6 +1835,133 @@ internal class RealAWSCognitoAuthPlugin(
                 authStateMachine.send(event)
             }
         )
+    }
+
+    override fun associateSoftwareMFAToken(onSuccess: Consumer<AuthSoftwareMFAResult>,
+                                           onError: Consumer<AuthException>) {
+        authStateMachine.getCurrentState { authState ->
+            when (authState.authNState) {
+                is AuthenticationState.SignedIn -> {
+                    GlobalScope.launch {
+                        try {
+                            val accessToken = getSession().userPoolTokensResult.value?.accessToken
+                            accessToken?.let {
+                                _associateSoftwareMFAToken(accessToken, onSuccess, onError)
+                            } ?: onError.accept(SignedOutException())
+                        } catch (error: Exception) {
+                            onError.accept(SignedOutException())
+                        }
+                    }
+                }
+                is AuthenticationState.SignedOut -> onError.accept(SignedOutException())
+                else -> onError.accept(InvalidStateException())
+            }
+        }
+    }
+
+    private fun _associateSoftwareMFAToken(accessToken: String,
+                                           onSuccess: Consumer<AuthSoftwareMFAResult>,
+                                           onError: Consumer<AuthException>) {
+        GlobalScope.launch {
+            val response = authEnvironment.cognitoAuthService
+                .cognitoIdentityProviderClient?.associateSoftwareToken {
+                    this.accessToken = accessToken
+                } ?: run {
+                onError.accept(AuthException(message = "Null associateSoftwareToken response", recoverySuggestion = ""))
+                return@launch
+            }
+            val nextStep = response.secretCode?.let {
+                AuthNextSoftwareMFAStep(AuthSoftwareMFAStep.CONFIRM_ASSOCIATE_MFA_WITH_CODE, it)
+            } ?: run {
+                AuthNextSoftwareMFAStep(AuthSoftwareMFAStep.DONE, null)
+            }
+            onSuccess.accept(AuthSoftwareMFAResult(nextStep))
+        }
+    }
+
+    override fun verifySoftwareMFAToken(userCode: String,
+                                        friendlyDeviceName: String,
+                                        onSuccess: Action,
+                                        onError: Consumer<AuthException>) {
+        authStateMachine.getCurrentState { authState ->
+            when (authState.authNState) {
+                is AuthenticationState.SignedIn -> {
+                    GlobalScope.launch {
+                        try {
+                            val accessToken = getSession().userPoolTokensResult.value?.accessToken
+                            accessToken?.let {
+                                _verifySoftwareMFAToken(accessToken, userCode, friendlyDeviceName, onSuccess, onError)
+                            } ?: onError.accept(SignedOutException())
+                        } catch (error: Exception) {
+                            onError.accept(SignedOutException())
+                        }
+                    }
+                }
+                is AuthenticationState.SignedOut -> onError.accept(SignedOutException())
+                else -> onError.accept(InvalidStateException())
+            }
+        }
+    }
+
+    private fun _verifySoftwareMFAToken(accessToken: String,
+                                        userCode: String,
+                                        friendlyDeviceName: String,
+                                        onSuccess: Action,
+                                        onError: Consumer<AuthException>) {
+        GlobalScope.launch {
+            val response = authEnvironment.cognitoAuthService
+                .cognitoIdentityProviderClient?.verifySoftwareToken {
+                    this.accessToken = accessToken
+                    this.userCode = userCode
+                    this.friendlyDeviceName = friendlyDeviceName
+                } ?: run {
+                onError.accept(AuthException(message = "Null verifySoftwareToken response", recoverySuggestion = ""))
+                return@launch
+            }
+            if (response.status == VerifySoftwareTokenResponseType.Success) {
+                onSuccess.call()
+            } else {
+                onError.accept(AuthException(message = "Invalid verify status: ${response.status}",
+                                             recoverySuggestion = ""))
+            }
+        }
+    }
+
+    override fun setSoftwareMFA(enabled: Boolean, onSuccess: Action, onError: Consumer<AuthException>) {
+        authStateMachine.getCurrentState { authState ->
+            when (authState.authNState) {
+                is AuthenticationState.SignedIn -> {
+                    GlobalScope.launch {
+                        try {
+                            val accessToken = getSession().userPoolTokensResult.value?.accessToken
+                            accessToken?.let {
+                                _setSoftwareMFA(accessToken, enabled, onSuccess)
+                            } ?: onError.accept(SignedOutException())
+                        } catch (error: Exception) {
+                            onError.accept(SignedOutException())
+                        }
+                    }
+                }
+                is AuthenticationState.SignedOut -> onError.accept(SignedOutException())
+                else -> onError.accept(InvalidStateException())
+            }
+        }
+    }
+
+    private fun _setSoftwareMFA(accessToken: String,
+                                enabled: Boolean,
+                                onSuccess: Action) {
+        CoroutineScope(Dispatchers.IO).launch {
+            authEnvironment.cognitoAuthService
+                .cognitoIdentityProviderClient?.setUserMfaPreference {
+                    this.accessToken = accessToken
+                    this.softwareTokenMfaSettings = SoftwareTokenMfaSettingsType.invoke {
+                        this.enabled = enabled
+                        if (enabled) this.preferredMfa = true
+                    }
+                }
+            onSuccess.call()
+        }
     }
 
     private fun addAuthStateChangeListener() {

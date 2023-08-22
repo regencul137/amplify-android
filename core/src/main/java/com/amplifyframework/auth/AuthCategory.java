@@ -17,6 +17,7 @@ package com.amplifyframework.auth;
 
 import android.app.Activity;
 import android.content.Intent;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -37,6 +38,7 @@ import com.amplifyframework.auth.result.AuthResetPasswordResult;
 import com.amplifyframework.auth.result.AuthSignInResult;
 import com.amplifyframework.auth.result.AuthSignOutResult;
 import com.amplifyframework.auth.result.AuthSignUpResult;
+import com.amplifyframework.auth.result.AuthSoftwareMFAResult;
 import com.amplifyframework.auth.result.AuthUpdateAttributeResult;
 import com.amplifyframework.core.Action;
 import com.amplifyframework.core.Consumer;
@@ -381,18 +383,43 @@ public final class AuthCategory extends Category<AuthPlugin<?>> implements AuthC
         getSelectedPlugin().signOut(onComplete);
     }
 
-    @Override public void signOut(
+    @Override
+    public void signOut(
             @NonNull AuthSignOutOptions options,
             @NonNull Consumer<AuthSignOutResult> onComplete
     ) {
         getSelectedPlugin().signOut(options, onComplete);
     }
-    
+
     @Override
     public void deleteUser(
             @NonNull Action onSuccess,
             @NonNull Consumer<AuthException> onError) {
         getSelectedPlugin().deleteUser(onSuccess, onError);
+    }
+
+    @Override
+    public void associateSoftwareMFAToken(
+            @NonNull Consumer<AuthSoftwareMFAResult> onSuccess,
+            @NonNull Consumer<AuthException> onError) {
+        getSelectedPlugin().associateSoftwareMFAToken(onSuccess, onError);
+    }
+
+    @Override
+    public void verifySoftwareMFAToken(
+            @NonNull String userCode,
+            @NonNull String friendlyDeviceName,
+            @NonNull Action onSuccess,
+            @NonNull Consumer<AuthException> onError) {
+        getSelectedPlugin().verifySoftwareMFAToken(userCode, friendlyDeviceName, onSuccess, onError);
+    }
+
+    @Override
+    public void setSoftwareMFA(
+            @NonNull boolean enabled,
+            @NonNull Action onSuccess,
+            @NonNull Consumer<AuthException> onError) {
+        getSelectedPlugin().setSoftwareMFA(enabled, onSuccess, onError);
     }
 }
 
